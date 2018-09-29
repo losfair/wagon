@@ -2,16 +2,18 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package disasm_test
+package wast_test
 
 import (
 	"bytes"
 	"io/ioutil"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/go-interpreter/wagon/disasm"
 	"github.com/go-interpreter/wagon/wasm"
+	"github.com/go-interpreter/wagon/wast"
 )
 
 var testPaths = []string{
@@ -28,8 +30,16 @@ func TestAssemble(t *testing.T) {
 		}
 		for _, fname := range fnames {
 			name := fname
+			tname := strings.TrimSuffix(name, ".wasm") + ".wat"
+			if _, err := os.Stat(tname); err != nil {
+				continue
+			}
 			t.Run(filepath.Base(name), func(t *testing.T) {
 				raw, err := ioutil.ReadFile(name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				exp, err := ioutil.ReadFile(tname)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -39,21 +49,16 @@ func TestAssemble(t *testing.T) {
 				if err != nil {
 					t.Fatalf("error reading module %v", err)
 				}
-				if m.Code == nil {
-					t.SkipNow()
+				buf := new(bytes.Buffer)
+				err = wast.WriteTo(buf, m)
+				if err != nil {
+					t.Fatal(err)
 				}
-				for _, f := range m.Code.Bodies {
-					d, err := disasm.Disassemble(f.Code)
-					if err != nil {
-						t.Fatalf("disassemble failed: %v", err)
-					}
-					code, err := disasm.Assemble(d)
-					if err != nil {
-						t.Fatalf("assemble failed: %v", err)
-					}
-					if !bytes.Equal(f.Code, code) {
-						t.Fatal("code is different")
-					}
+				if !bytes.Equal(exp, buf.Bytes()) {
+					ioutil.WriteFile(tname+"_got", buf.Bytes(), 0644)
+					t.Fatalf("output is different")
+				} else {
+					os.Remove(tname + "_got")
 				}
 			})
 		}
